@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -78,5 +78,36 @@ function stripMarkdown(s) {
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
+
+// Speech-to-text via OpenAI Whisper. The browser records an audio segment and
+// POSTs the raw bytes here; far more accurate than the browser recognizer,
+// especially for accents and background noise.
+router.post(
+  '/transcribe',
+  express.raw({ type: () => true, limit: '25mb' }),
+  asyncHandler(async (req, res) => {
+    if (!env.OPENAI_API_KEY) throw new HttpError(400, 'OPENAI_API_KEY not set — Whisper needs it');
+    const buf = req.body;
+    if (!buf || !buf.length) throw new HttpError(400, 'No audio received');
+
+    const mime = req.headers['content-type'] || 'audio/webm';
+    const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'mp4' : mime.includes('wav') ? 'wav' : 'webm';
+
+    const form = new FormData();
+    form.append('file', new Blob([buf], { type: mime }), `audio.${ext}`);
+    form.append('model', process.env.OPENAI_STT_MODEL || 'whisper-1');
+    form.append('language', process.env.OPENAI_STT_LANGUAGE || 'en');
+    form.append('response_format', 'json');
+
+    const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${env.OPENAI_API_KEY}` },
+      body: form,
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new HttpError(502, `Transcription failed: ${JSON.stringify(d?.error || d).slice(0, 200)}`);
+    res.json({ text: (d.text || '').trim() });
+  })
+);
 
 export default router;

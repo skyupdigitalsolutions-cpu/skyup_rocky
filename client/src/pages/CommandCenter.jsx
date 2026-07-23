@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, apiError } from '../api/client.js';
 import { useAuth } from '../store/auth.jsx';
 import { useVoice } from '../hooks/useVoice.js';
+import { useWhisperListen } from '../hooks/useWhisperListen.js';
 import { useMicLevel } from '../hooks/useMicLevel.js';
 import ActivityFeed from '../components/ActivityFeed.jsx';
 import '../styles/command.css';
@@ -220,6 +221,7 @@ export default function CommandCenter() {
 
   const mic = useMicLevel({ bins: 64, onFrame: (b) => { bandsRef.current = b; } });
   const voice = useVoice({ onFinalTranscript: (t) => handleRef.current(t) });
+  const whisper = useWhisperListen({ onTranscript: (t) => handleRef.current(t), onError: (m) => setErr(m) });
 
   const pushStep = useCallback((kind, text) => {
     setSteps((s) => [...s.slice(-5), { kind, text, id: Date.now() + Math.random() }]);
@@ -250,7 +252,7 @@ export default function CommandCenter() {
       wakeRef.current = false;      // no wake word — speak directly
       activatedRef.current = false;
       setModeSafe('listening');
-      try { voice.startListening(); } catch {}
+      whisper.start();
     };
     const t = setTimeout(begin, 700);
     const onGesture = () => begin();
@@ -262,15 +264,15 @@ export default function CommandCenter() {
 
   // Keep recognition alive during a listening session (covers wake mode too).
   useEffect(() => {
-    if (!voice.listening && sessionRef.current && modeRef.current === 'listening' && !processingRef.current) {
+    if (!whisper.listening && sessionRef.current && modeRef.current === 'listening' && !processingRef.current) {
       const id = setTimeout(() => {
         if (sessionRef.current && modeRef.current === 'listening' && !processingRef.current) {
-          try { voice.startListening(); } catch {}
+          whisper.start();
         }
       }, 400);
       return () => clearTimeout(id);
     }
-  }, [voice.listening, voice]);
+  }, [whisper.listening]);
 
   function ensureAudio() {
     if (!audioRef.current) {
@@ -368,7 +370,7 @@ export default function CommandCenter() {
     setQ(query);
     setLastAction(null);
     pushStep('heard', `Heard: "${query}"`);
-    voice.stopListening(); mic.stop();
+    whisper.stop();
     setModeSafe('thinking');
     pushStep('think', 'Understanding your request…');
     if (/\b(schedule|post|publish|reel|upload|queue)\b/i.test(query)) pushStep('act', 'Creating the reel slot…');
@@ -390,7 +392,7 @@ export default function CommandCenter() {
     } finally {
       processingRef.current = false;
       activatedRef.current = false;
-      if (sessionRef.current) { setModeSafe('listening'); try { voice.startListening(); } catch {} }
+      if (sessionRef.current) { setModeSafe('listening'); whisper.start(); }
       else setModeSafe('idle');
     }
   }
@@ -400,7 +402,7 @@ export default function CommandCenter() {
     sessionRef.current = false; processingRef.current = false;
     wakeRef.current = false; activatedRef.current = false;
     try { mic.stop(); } catch {}
-    try { voice.stopListening(); } catch {}
+    try { whisper.stop(); } catch {}
     try { audioRef.current?.pause(); } catch {}
     stopOutAnalysis();
   }
@@ -412,7 +414,7 @@ export default function CommandCenter() {
     wakeRef.current = false;
     setWakeOn(false);
     setModeSafe('listening');
-    try { voice.startListening(); } catch {}
+    whisper.start();
   }
 
   // Hands-free "Hey Rocky" mode.
@@ -424,7 +426,7 @@ export default function CommandCenter() {
     setWakeOn(true);
     setSteps([{ kind: 'listen', text: 'Listening for \u201cHey Rocky\u201d\u2026', id: Date.now() }]);
     setModeSafe('listening');
-    try { voice.startListening(); } catch {}
+    whisper.start();
   }
 
   function submitTyped() {
