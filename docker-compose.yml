@@ -1,0 +1,30 @@
+# Rocky — API + web. MongoDB is external (MongoDB Atlas) via MONGODB_URI.
+# Usage:
+#   1) cp server/.env.example server/.env   (fill in values)
+#   2) docker compose up --build -d
+#   3) (first run) docker compose exec api npm run seed   # optional demo data
+services:
+  api:
+    build: ./server
+    env_file: ./server/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=8791
+      # In this compose setup the web container proxies /api, so same-origin:
+      - CLIENT_ORIGIN=${CLIENT_ORIGIN:-http://localhost:8080}
+    volumes:
+      - rocky_storage:/app/storage
+    restart: unless-stopped
+    expose:
+      - '8791'
+
+  web:
+    build: ./client
+    depends_on:
+      - api
+    ports:
+      - '8080:80'
+    restart: unless-stopped
+
+volumes:
+  rocky_storage:
