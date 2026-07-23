@@ -45,13 +45,13 @@ const NAV = [
   { to: '/chat', label: 'Ask Rocky', icon: 'chat' },
   { to: '/clients', label: 'Clients', icon: 'clients' },
   { to: '/reels', label: 'Social Media', icon: 'reels' },
+  { to: '/ads', label: 'Ads Manager', icon: 'ads' },
   { to: '/integrations/select', label: 'Integrations', icon: 'integ' },
   { to: '/settings', label: 'Settings', icon: 'settings', perm: 'user:manage' },
 ];
 
 // Roadmap verticals — shown dimmed so the OS reads as a full agency brain.
 const SOON = [
-  { label: 'Ads Manager', icon: 'ads' },
   { label: 'SEO Intelligence', icon: 'seo' },
   { label: 'Websites', icon: 'web' },
   { label: 'Creatives', icon: 'creative' },

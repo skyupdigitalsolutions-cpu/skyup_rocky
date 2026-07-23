@@ -6,6 +6,7 @@ import { decryptSecret } from '../lib/crypto.js';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { logActivity } from '../models/Activity.js';
+import { getSetting } from '../models/Setting.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -21,7 +22,8 @@ export async function publishScheduledPost(postId) {
   const clientName = client?.name || '';
   const thumb = post.media?.thumbnailUrl || '';
   post.attempts += 1;
-  const caption = buildCaption(post);
+  const settings = (await getSetting('reelsWatch', {})) || {};
+  const caption = buildCaption(post, settings);
 
   await logActivity({
     client: post.client, clientName, kind: 'publish_start', state: 'running', post: post._id,
@@ -119,9 +121,17 @@ function finishPublished(post) {
   post.nextRetryAt = null;
 }
 
-function buildCaption(post) {
+function buildCaption(post, settings = {}) {
   const tags = (post.hashtags || []).filter(Boolean).map((t) => (t.startsWith('#') ? t : `#${t}`));
-  return [post.caption?.trim(), tags.join(' ')].filter(Boolean).join('\n\n');
+  const parts = [post.caption?.trim(), tags.join(' ')];
+  // Consistent collaborator @mentions (IG API can't add true co-authors).
+  if (settings.collabEnabled && Array.isArray(settings.collaborators) && settings.collaborators.length) {
+    const mentions = settings.collaborators
+      .map((h) => `@${String(h).replace(/^@/, '').trim()}`)
+      .filter((h) => h.length > 1);
+    if (mentions.length) parts.push(`\u2728 In collab with ${mentions.join(' ')}`);
+  }
+  return parts.filter(Boolean).join('\n\n');
 }
 
 const backoffMs = (attempt) => Math.min(60 * 60 * 1000, 5 * 60 * 1000 * attempt);

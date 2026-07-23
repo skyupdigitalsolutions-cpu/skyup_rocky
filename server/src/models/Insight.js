@@ -24,6 +24,7 @@ const dailyBriefSchema = new mongoose.Schema(
   {
     date: { type: String, required: true, index: true }, // YYYY-MM-DD (brief tz)
     summary: { type: String, default: '' },
+    spokenSummary: { type: String, default: '' },
     priorities: [{ type: String }],
     // References to insights surfaced in this brief for drill-down.
     items: [

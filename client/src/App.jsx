@@ -9,6 +9,7 @@ import ClientDetail from './pages/ClientDetail.jsx';
 import Integrations from './pages/Integrations.jsx';
 import IntegrationsSelect from './pages/IntegrationsSelect.jsx';
 import Reels from './pages/Reels.jsx';
+import AdsManager from './pages/AdsManager.jsx';
 import Settings from './pages/Settings.jsx';
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/integrations/select" element={<IntegrationsSelect />} />
         <Route path="/integrations/:clientId" element={<Integrations />} />
         <Route path="/reels" element={<Reels />} />
+        <Route path="/ads" element={<AdsManager />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

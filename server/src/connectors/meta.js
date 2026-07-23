@@ -14,7 +14,7 @@ export const metaConnector = {
   buildAuthUrl(client, state) {
     if (!this.isConfigured()) throw new ConnectorError('Meta not configured', { code: 'not_configured' });
     const redirect = `${env.SERVER_PUBLIC_URL}/api/integrations/meta/callback`;
-    const scope = ['ads_read', 'business_management'].join(',');
+    const scope = ['ads_read', 'ads_management', 'business_management'].join(',');
     const url = new URL(`https://www.facebook.com/${env.META_API_VERSION}/dialog/oauth`);
     url.searchParams.set('client_id', env.META_APP_ID);
     url.searchParams.set('redirect_uri', redirect);
@@ -40,7 +40,7 @@ export const metaConnector = {
       credentials: { accessToken: data.access_token },
       accountLabel: 'Meta Ads',
       externalAccountId: '',
-      scopes: ['ads_read'],
+      scopes: ['ads_read', 'ads_management'],
     };
   },
 

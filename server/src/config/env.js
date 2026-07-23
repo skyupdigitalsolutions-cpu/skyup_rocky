@@ -5,6 +5,17 @@ dotenv.config();
 
 // Validate + coerce the environment once at boot. Missing critical vars fail
 // fast with a readable message; optional integration vars default to empty.
+// Robust string -> boolean for env vars. `z.coerce.boolean()` treats ANY
+// non-empty string (including "false") as true, so we parse explicitly and
+// tolerate trailing comments/garbage (e.g. `false # note`).
+const boolEnv = (def) =>
+  z.preprocess((v) => {
+    if (typeof v === 'boolean') return v;
+    if (v === undefined || v === null || v === '') return def;
+    const first = String(v).trim().toLowerCase().split(/[\s#(]/)[0];
+    return ['1', 'true', 'yes', 'on'].includes(first);
+  }, z.boolean());
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(8791),
@@ -19,7 +30,7 @@ const schema = z.object({
   TOKEN_ENCRYPTION_KEY: z
     .string()
     .regex(/^[0-9a-fA-F]{64}$/, 'TOKEN_ENCRYPTION_KEY must be 64 hex chars (32 bytes)'),
-  COOKIE_SECURE: z.coerce.boolean().default(false),
+  COOKIE_SECURE: boolEnv(false),
   COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
 
   LLM_PROVIDER: z.enum(['mock', 'anthropic', 'openai']).default('mock'),
@@ -59,7 +70,7 @@ const schema = z.object({
   CLOUDINARY_API_KEY: z.string().default(''),
   CLOUDINARY_API_SECRET: z.string().default(''),
   CLOUDINARY_UPLOAD_FOLDER: z.string().default('rocky/reels'),
-  PUBLISH_DRY_RUN: z.coerce.boolean().default(true),
+  PUBLISH_DRY_RUN: boolEnv(true),
   REELS_SCHEDULER_CRON: z.string().default('* * * * *'),
 
   // ---- Voice (text-to-speech) ----

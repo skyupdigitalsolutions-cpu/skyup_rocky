@@ -23,6 +23,8 @@ import briefsRoutes from './routes/briefs.routes.js';
 import insightsRoutes from './routes/insights.routes.js';
 import reelsRoutes from './routes/reels.routes.js';
 import voiceRoutes from './routes/voice.routes.js';
+import metricsRoutes from './routes/metrics.routes.js';
+import adsRoutes from './routes/ads.routes.js';
 
 const app = express();
 
@@ -61,6 +63,8 @@ app.use('/api/briefs', briefsRoutes);
 app.use('/api/insights', insightsRoutes);
 app.use('/api/reels', reelsRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/metrics', metricsRoutes);
+app.use('/api/ads', adsRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

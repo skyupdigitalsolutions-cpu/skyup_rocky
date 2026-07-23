@@ -4,7 +4,7 @@ import { api, apiError } from '../api/client.js';
 export default function WatchFolderCard() {
   const [hidden, setHidden] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [cfg, setCfg] = useState({ enabled: false, dir: '', intervalSec: 20, defaultClient: 'Skyup', dailyTime: '18:00' });
+  const [cfg, setCfg] = useState({ enabled: false, dir: '', intervalSec: 20, defaultClient: 'Skyup', dailyTime: '18:00', collabEnabled: false, collaborators: [] });
   const [status, setStatus] = useState(null);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
@@ -17,7 +17,7 @@ export default function WatchFolderCard() {
   const load = async () => {
     try {
       const { data } = await api.get('/reels/watch-config');
-      setCfg({ enabled: !!data.config.enabled, dir: data.config.dir || '', intervalSec: data.config.intervalSec || 20, defaultClient: data.config.defaultClient || 'Skyup', dailyTime: data.config.dailyTime || '18:00' });
+      setCfg({ enabled: !!data.config.enabled, dir: data.config.dir || '', intervalSec: data.config.intervalSec || 20, defaultClient: data.config.defaultClient || 'Skyup', dailyTime: data.config.dailyTime || '18:00', collabEnabled: !!data.config.collabEnabled, collaborators: data.config.collaborators || [] });
       setStatus(data.status);
       if (data.config.enabled) setOpen(true);
     } catch (e) {
@@ -168,6 +168,24 @@ export default function WatchFolderCard() {
                 value={cfg.dailyTime}
                 onChange={(e) => setCfg({ ...cfg, dailyTime: e.target.value })}
               />
+            </div>
+          </div>
+
+          {/* Collaborators — auto @mention on every reel */}
+          <div className="field" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <label style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer' }}>
+              <input type="checkbox" checked={cfg.collabEnabled} onChange={(e) => setCfg({ ...cfg, collabEnabled: e.target.checked })} />
+              <span>Auto-mention collaborators on every reel</span>
+            </label>
+            <input
+              className="input"
+              style={{ marginTop: 8 }}
+              placeholder="instagram handles, comma separated — e.g. skyup.digital, partner.brand"
+              value={(cfg.collaborators || []).join(', ')}
+              onChange={(e) => setCfg({ ...cfg, collaborators: e.target.value.split(/[\s,]+/).map((h) => h.replace(/^@/, '').trim()).filter(Boolean) })}
+            />
+            <div className="small muted mt-sm">
+              Instagram's API can't add true co-authors, so Rocky appends these as <code>@mentions</code> in every caption instead. Add or remove anytime — it applies to all future reels.
             </div>
           </div>
 

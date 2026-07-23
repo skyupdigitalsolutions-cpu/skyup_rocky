@@ -57,6 +57,8 @@ const watchSchema = z.object({
   intervalSec: z.number().min(5).max(3600).default(20),
   defaultClient: z.string().default('Skyup'),
   dailyTime: z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:MM 24h, e.g. 18:00').default('18:00'),
+  collabEnabled: z.boolean().default(false),
+  collaborators: z.array(z.string()).default([]),
 });
 
 router.put(

@@ -16,6 +16,9 @@ export default function ClientDetail() {
   const [error, setError] = useState('');
   const [paste, setPaste] = useState({ title: '', kind: 'strategy', text: '' });
   const [savingDoc, setSavingDoc] = useState(false);
+  const [refs, setRefs] = useState({ metaAdAccountId: '', facebookPageId: '', googleAdsCustomerId: '', gscSiteUrl: '', ga4PropertyId: '' });
+  const [savingRefs, setSavingRefs] = useState(false);
+  const [refsMsg, setRefsMsg] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -48,7 +51,16 @@ export default function ClientDetail() {
     }
   };
 
-  if (loading) return <Loader label="Loading client…" />;
+  const saveRefs = async () => {
+    setSavingRefs(true); setRefsMsg('');
+    try {
+      await api.patch(`/clients/${id}`, { accountRefs: refs });
+      setRefsMsg('Saved — reconnect the integration to use the new account ID.');
+      await load();
+    } catch (e) { setRefsMsg(apiError(e)); } finally { setSavingRefs(false); }
+  };
+
+    if (loading) return <Loader label="Loading client…" />;
   if (!data) return <Empty title="Client not found" action={<Link className="btn sm" to="/clients">Back to clients</Link>} />;
 
   const { client, integrations = [], insights = [] } = data;
@@ -152,6 +164,37 @@ export default function ClientDetail() {
               })}
             </div>
             <button className="btn sm mt" onClick={() => navigate(`/integrations/${id}`)}>Manage →</button>
+
+          <div className="divider" />
+          <div className="section-title">Account references</div>
+          <div className="small muted" style={{ marginBottom: 10 }}>These IDs tell Rocky which account to read and write for each platform.</div>
+
+          <div className="field"><label>Meta Ad Account ID</label>
+            <input className="input" placeholder="e.g. 1639746160317791  (no act_ prefix)" value={refs.metaAdAccountId}
+              onChange={(e) => setRefs({ ...refs, metaAdAccountId: e.target.value.replace(/^act_/, '').trim() })} /></div>
+
+          <div className="field"><label>Facebook Page ID</label>
+            <input className="input" placeholder="e.g. 104156789012345" value={refs.facebookPageId}
+              onChange={(e) => setRefs({ ...refs, facebookPageId: e.target.value.trim() })} /></div>
+
+          <div className="field"><label>Google Ads Customer ID</label>
+            <input className="input" placeholder="e.g. 111-222-3333" value={refs.googleAdsCustomerId}
+              onChange={(e) => setRefs({ ...refs, googleAdsCustomerId: e.target.value.trim() })} /></div>
+
+          <div className="field"><label>Search Console Site URL</label>
+            <input className="input" placeholder="e.g. https://skyupdigital.in/" value={refs.gscSiteUrl}
+              onChange={(e) => setRefs({ ...refs, gscSiteUrl: e.target.value.trim() })} /></div>
+
+          <div className="field"><label>GA4 Property ID</label>
+            <input className="input" placeholder="e.g. 123456789" value={refs.ga4PropertyId}
+              onChange={(e) => setRefs({ ...refs, ga4PropertyId: e.target.value.trim() })} /></div>
+
+          {can('client:write') && (
+            <button className="btn primary sm" onClick={saveRefs} disabled={savingRefs}>
+              {savingRefs ? 'Saving…' : 'Save account IDs'}
+            </button>
+          )}
+          {refsMsg && <div className="small mt-sm" style={{ color: refsMsg.startsWith('Saved') ? 'var(--green)' : 'var(--red)' }}>{refsMsg}</div>}
           </div>
 
           <div className="card">

@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   REELS_READ: 'reels:read',
   REELS_WRITE: 'reels:write',
   USER_MANAGE: 'user:manage',
+  ADS_MANAGE: 'ads:manage',
   SETTINGS_MANAGE: 'settings:manage',
   AUDIT_READ: 'audit:read',
 };

@@ -21,8 +21,6 @@ export function getConnector(provider) {
   return c;
 }
 
-// Runs a single connector sync for a client: decrypts creds, calls adapter,
-// persists any returned snapshots, and stamps status/lastSync/lastError.
 export async function runSync(client, provider) {
   const connector = getConnector(provider);
   const integration = await Integration.findOne({ client: client._id, provider }).select('+credentials');

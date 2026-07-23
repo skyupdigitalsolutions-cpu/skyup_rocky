@@ -187,7 +187,7 @@ async function processFile(dir, filename, cfg) {
       await logActivity({ client: client._id, clientName: client.name, kind: 'caption', state: 'running', title: 'Writing caption…', detail: 'Rocky is watching the video' });
       if (visionConfigured()) {
         try {
-          caption = await captionFromVideo({ videoUrl: media.videoUrl, client });
+          caption = await captionFromVideo({ videoUrl: media.videoUrl, client, durationSec: media.durationSec });
           if (caption) captionSource = 'vision';
         } catch (e) {
           visionErr = e.message || String(e);

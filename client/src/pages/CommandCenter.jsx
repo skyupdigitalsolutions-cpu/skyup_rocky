@@ -202,6 +202,7 @@ export default function CommandCenter() {
 
   // NEW: hands-free wake word + live process trail
   const [wakeOn, setWakeOn] = useState(false);
+  const [metrics, setMetrics] = useState(null);
   const [steps, setSteps] = useState([]);
   const [lastAction, setLastAction] = useState(null);
   const wakeRef = useRef(false);       // hands-free wake mode active
@@ -235,7 +236,8 @@ export default function CommandCenter() {
 
   useEffect(() => {
     (async () => {
-      const [c, b, i] = await Promise.allSettled([api.get('/clients'), api.get('/briefs/today'), api.get('/insights')]);
+      const [c, b, i, m] = await Promise.allSettled([api.get('/clients'), api.get('/briefs/today'), api.get('/insights'), api.get('/metrics/dashboard')]);
+    if (m.status === 'fulfilled') setMetrics(m.value.data);
       if (c.status === 'fulfilled') setClients(c.value.data.clients || c.value.data || []);
       if (b.status === 'fulfilled') setBrief(b.value.data.brief || b.value.data || null);
       if (i.status === 'fulfilled') setInsights(i.value.data.insights || i.value.data || []);
@@ -456,12 +458,16 @@ export default function CommandCenter() {
     ];
   }, [insights]);
 
+  const metaToday = metrics?.meta?.today;
+  const metaWeek  = metrics?.meta?.week;
+  const gadsWeek  = metrics?.googleAds?.week;
+  const fmtInr = (n) => n != null && n > 0 ? `₹${Number(n).toLocaleString('en-IN')}` : '—';
   const stats = [
-    { v: clients.length || 14, l: 'Active Clients' },
-    { v: 47, l: 'Active Campaigns' },
-    { v: '₹2,48,350', l: 'Total Spend Today', hud: true },
-    { v: 165, l: 'Leads Generated' },
-    { v: '82%', l: 'Agency Health' },
+    { v: clients.length || '—', l: 'Active Clients' },
+    { v: '—', l: 'Active Campaigns' },
+    { v: metaToday?.spend != null ? fmtInr(metaToday.spend) : '—', l: 'Total Spend Today', hud: true },
+    { v: metaToday?.conversions != null ? metaToday.conversions : '—', l: 'Leads Generated' },
+    { v: '—', l: 'Agency Health' },
   ];
   const live = mode !== 'idle';
 
@@ -470,7 +476,7 @@ export default function CommandCenter() {
       <div className="cc-head">
         <div className="cc-greet">
           <h2>{greeting}, <b>SKYUP</b></h2>
-          <p>Here's what's happening across your agency today. <span className="cc-sample" style={{ position: 'static', marginLeft: 8 }}>SAMPLE · connect sources to go live</span></p>
+          <p>Here's what's happening across your agency today. Connect sources to see live data.</p>
         </div>
         <div className="cc-ask">
           <RockyMark size={22} />
@@ -486,24 +492,21 @@ export default function CommandCenter() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div className="cc-panel cc-metric">
-          <span className="cc-sample">SAMPLE</span>
-          <div className="ph"><span className="ic"><Icon d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z" /></span><span className="ttl">Meta Ads</span></div>
+          <div className="ph"><span className="ic"><Icon d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z" /></span><span className="ttl">Meta Ads</span>{!metaToday && <span className="cc-sample" style={{marginLeft:8}}>not synced yet</span>}</div>
           <div className="rowm">
-            <div className="m"><div className="k">Spend Today</div><div className="val">₹1,28,450</div></div>
-            <div className="m"><div className="k">Conversions</div><div className="val">85</div></div>
-            <div className="m"><div className="k">ROAS</div><div className="val">3.42x</div></div>
+            <div className="m"><div className="k">Spend Today</div><div className="val">{metaToday?.spend != null ? fmtInr(metaToday.spend) : '—'}</div></div>
+            <div className="m"><div className="k">Conversions</div><div className="val">{metaToday?.conversions ?? '—'}</div></div>
+            <div className="m"><div className="k">ROAS</div><div className="val">{metaToday?.roas != null && metaToday.roas > 0 ? metaToday.roas + 'x' : '—'}</div></div>
           </div>
-          <Sparkline seed={2} />
+          {metaWeek && <div className="small muted" style={{marginTop:6}}>7-day: {fmtInr(metaWeek.spend)} spend · {metaWeek.conversions} conversions · CTR {metaWeek.ctr}%</div>}
         </div>
         <div className="cc-panel cc-metric">
-          <span className="cc-sample">SAMPLE</span>
-          <div className="ph"><span className="ic"><Icon d="M12 2 2 22h20L12 2z" /></span><span className="ttl">Google Ads</span></div>
+          <div className="ph"><span className="ic"><Icon d="M12 2 2 22h20L12 2z" /></span><span className="ttl">Google Ads</span>{!gadsWeek && <span className="cc-sample" style={{marginLeft:8}}>not connected</span>}</div>
           <div className="rowm">
-            <div className="m"><div className="k">Spend Today</div><div className="val">₹76,230</div></div>
-            <div className="m"><div className="k">Conversions</div><div className="val">39</div></div>
-            <div className="m"><div className="k">ROAS</div><div className="val">2.81x</div></div>
+            <div className="m"><div className="k">Spend (7d)</div><div className="val">{gadsWeek?.spend != null ? fmtInr(gadsWeek.spend) : '—'}</div></div>
+            <div className="m"><div className="k">Conversions</div><div className="val">{gadsWeek?.conversions ?? '—'}</div></div>
+            <div className="m"><div className="k">ROAS</div><div className="val">{gadsWeek?.roas != null && gadsWeek.roas > 0 ? gadsWeek.roas + 'x' : '—'}</div></div>
           </div>
-          <Sparkline seed={5} />
         </div>
         <div className="cc-panel">
           <div className="ph"><span className="ic"><Icon d="M13 2 3 14h7l-1 8 10-12h-7z" /></span><span className="ttl">Today's Priorities</span></div>
@@ -566,21 +569,19 @@ export default function CommandCenter() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div className="cc-panel">
-          <span className="cc-sample">SAMPLE</span>
-          <div className="ph"><span className="ic"><Icon d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5-5" /></span><span className="ttl">SEO Performance</span></div>
+          <div className="ph"><span className="ic"><Icon d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5-5" /></span><span className="ttl">SEO Performance</span><span className="cc-sample" style={{marginLeft:8}}>connect Search Console</span></div>
           <div className="cc-list">
-            <div className="cc-li"><span className="txt">Keywords Ranked</span><b style={{ color: '#fff' }}>248</b><Delta v={18} /></div>
-            <div className="cc-li"><span className="txt">Organic Traffic</span><b style={{ color: '#fff' }}>5,692</b><Delta v={12} /></div>
-            <div className="cc-li"><span className="txt">Visibility Score</span><b style={{ color: '#fff' }}>62%</b></div>
+            <div className="cc-li"><span className="txt">Keywords Ranked</span><b style={{ color: '#fff' }}>—</b></div>
+            <div className="cc-li"><span className="txt">Organic Traffic</span><b style={{ color: '#fff' }}>—</b></div>
+            <div className="cc-li"><span className="txt">Visibility Score</span><b style={{ color: '#fff' }}>—</b></div>
           </div>
         </div>
         <div className="cc-panel">
-          <span className="cc-sample">SAMPLE</span>
-          <div className="ph"><span className="ic"><Icon d="M4 4h16v16H4zM4 9h16M9 4v16" /></span><span className="ttl">Social Media</span></div>
+          <div className="ph"><span className="ic"><Icon d="M4 4h16v16H4zM4 9h16M9 4v16" /></span><span className="ttl">Social Media</span><span className="cc-sample" style={{marginLeft:8}}>connect Instagram</span></div>
           <div className="cc-list">
-            <div className="cc-li"><span className="txt">Followers</span><b style={{ color: '#fff' }}>25.4K</b><Delta v={8} /></div>
-            <div className="cc-li"><span className="txt">Engagement Rate</span><b style={{ color: '#fff' }}>4.7%</b><Delta v={0.9} /></div>
-            <div className="cc-li"><span className="txt">Posts This Week</span><b style={{ color: '#fff' }}>24</b><Delta v={6} /></div>
+            <div className="cc-li"><span className="txt">Followers</span><b style={{ color: '#fff' }}>—</b></div>
+            <div className="cc-li"><span className="txt">Engagement Rate</span><b style={{ color: '#fff' }}>—</b></div>
+            <div className="cc-li"><span className="txt">Posts This Week</span><b style={{ color: '#fff' }}>—</b></div>
           </div>
         </div>
         <div className="cc-panel">
@@ -595,7 +596,7 @@ export default function CommandCenter() {
         <table className="cc-tbl">
           <thead><tr><th>Campaign</th><th>CTR</th><th>ROAS</th></tr></thead>
           <tbody>
-            {[['XYZ Properties', '2.48%', '4.21x'], ['Kapees Interiors', '3.67%', '3.89x'], ['ABC School', '2.11%', '5.12x'], ['Fitness Pro', '3.02%', '3.15x']].map((r) => (
+            {[].map((r) => (
               <tr key={r[0]}><td>{r[0]}</td><td>{r[1]}</td><td className="g">{r[2]}</td></tr>
             ))}
           </tbody>

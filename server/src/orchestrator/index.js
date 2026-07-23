@@ -152,14 +152,18 @@ async function narrateMorningBrief() {
   if (!brief) return `Good morning. I don't have a brief yet — once your data sources are connected and synced, I'll have your agency numbers ready each morning.`;
 
   const dateLabel = new Date(`${brief.date}T09:00:00+05:30`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
-  const parts = [`Good morning. Here's your agency brief for ${dateLabel}.`];
-  if (brief.summary) parts.push(stripMd(brief.summary));
+  const parts = [`Good morning. Here's your Skyup brief for ${dateLabel}.`];
+  // Voice = SHORT (spend + lead outcomes). The full metrics stay on screen
+  // in the Command Center brief card (brief.summary), not spoken aloud.
+  if (brief.spokenSummary) {
+    parts.push(stripMd(brief.spokenSummary));
+  } else if (brief.summary) {
+    parts.push(stripMd(brief.summary));
+  }
   const pr = (brief.priorities || []).filter(Boolean);
   if (pr.length) {
-    parts.push(`Your top ${pr.length === 1 ? 'priority is' : `${Math.min(pr.length, 5)} priorities are`}:`);
-    pr.slice(0, 5).forEach((p, i) => parts.push(`${i + 1}. ${stripMd(p)}.`));
-  } else {
-    parts.push(`Nothing urgent is flagged right now.`);
+    parts.push(`Top ${pr.length === 1 ? 'priority' : `${Math.min(pr.length, 3)} priorities`}:`);
+    pr.slice(0, 3).forEach((p, i) => parts.push(`${i + 1}. ${stripMd(p)}.`));
   }
   const missing = brief.generatedFrom?.staleOrMissing || [];
   if (missing.length) parts.push(`Note: ${missing.length} source${missing.length === 1 ? ' is' : 's are'} not reporting yet, so some numbers may be incomplete.`);
