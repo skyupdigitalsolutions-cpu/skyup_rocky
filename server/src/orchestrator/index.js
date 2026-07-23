@@ -14,6 +14,7 @@ import { ScheduledPost } from '../models/ScheduledPost.js';
 import { publishScheduledPost } from '../services/reelsPublisher.js';
 import { DailyBrief } from '../models/Insight.js';
 import { generateMorningBrief } from '../jobs/morningBrief.js';
+import { crmConfigured, answerCrmQuery, leadStats, followUpStats, attendanceToday, projectStats } from '../lib/crm.js';
 
 // "good morning" / "brief me" / "daily insights" → spoken brief.
 const MORNING_INTENT = /\b(good\s*morning|morning brief|daily brief|brief me|my brief|daily insights|today'?s insights|what'?s (my|the) brief|brief for today|catch me up)\b/i;
@@ -28,6 +29,29 @@ export async function answerQuestion({ user, question, context, history = [] }) 
       meta: { model: 'internal', usage: {} },
       action: null,
     };
+  }
+
+  // ---- Natural-language CRM queries (real data, no hallucination) ------------
+  const CRM_INTENT = /\b(lead|leads|hot|warm|cold|conversion|converted|follow.?up|pipeline|crm|business summary|summary|contacted)\b/i;
+  if (crmConfigured() && CRM_INTENT.test(question)) {
+    try {
+      const ans = await answerCrmQuery(question);
+      if (ans) {
+        return {
+          answer: ans,
+          grounding: { sources: ['CRM'], period: 'live', toolCalls: [{ name: 'crm_query', ok: true }], missing: [] },
+          meta: { model: 'internal', usage: {} },
+          action: null,
+        };
+      }
+    } catch (e) {
+      return {
+        answer: `I couldn't read the CRM: ${e.message}`,
+        grounding: { sources: [], period: '', toolCalls: [{ name: 'crm_query', ok: false, note: e.message }], missing: [] },
+        meta: { model: 'internal', usage: {} },
+        action: null,
+      };
+    }
   }
 
   // ---- Publish an existing reel NOW (checked before create/reschedule) -------
@@ -109,6 +133,11 @@ export async function answerQuestion({ user, question, context, history = [] }) 
   const contextBlocks = [];
   let clientName = null;
 
+  // Always give Rocky the company's live state (brief + CRM) so general
+  // questions like "today's priorities" have real grounding.
+  const company = await companyContext();
+  if (company) { contextBlocks.push(company); sources.push('today\'s brief', 'live CRM'); }
+
   if (clientId) {
     const client = await Client.findById(clientId).lean();
     clientName = client?.name || 'Unknown client';
@@ -141,6 +170,46 @@ export async function answerQuestion({ user, question, context, history = [] }) 
   };
 }
 
+// Company-wide live context so Rocky can answer general questions ("today's
+// priorities", "how are we doing") without a client selected. This is what makes
+// Rocky actually know the business, not just per-client metrics.
+async function companyContext() {
+  const blocks = [];
+  try {
+    const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    let brief = await DailyBrief.findOne().sort({ createdAt: -1 }).lean();
+    if (!brief || brief.date !== todayKey) {
+      try { await generateMorningBrief(); brief = await DailyBrief.findOne().sort({ createdAt: -1 }).lean(); } catch { /* keep latest */ }
+    }
+    if (brief) {
+      const pr = (brief.priorities || []).filter(Boolean);
+      blocks.push(
+        `TODAY'S BRIEF (${brief.date}):\n${brief.summary || ''}` +
+        (pr.length ? `\nTODAY'S PRIORITIES:\n${pr.map((p, i) => `${i + 1}. ${p}`).join('\n')}` : '')
+      );
+    }
+  } catch { /* non-fatal */ }
+
+  if (crmConfigured()) {
+    try {
+      const [s, fu, att, proj] = await Promise.all([
+        leadStats('today'),
+        followUpStats().catch(() => ({ due: 0, overdue: 0 })),
+        attendanceToday().catch(() => null),
+        projectStats().catch(() => ({ active: 0 })),
+      ]);
+      blocks.push(
+        `LIVE CRM (Skyup, today): ${s.total} leads — New ${s.newLeads}, Interested ${s.interested}, Converted ${s.converted}, Not-interested ${s.notInterested}. ` +
+        `Temperature: Hot ${s.hot}, Warm ${s.warm}, Cold ${s.cold}. ` +
+        `Follow-ups: ${fu.due} due today, ${fu.overdue} overdue.` +
+        (att ? ` Team: ${att.present}/${att.total} present.` : '') +
+        ` Active projects: ${proj.active}.`
+      );
+    } catch { /* non-fatal */ }
+  }
+  return blocks.join('\n\n');
+}
+
 // Build a spoken-style morning brief (no markdown — the voice loop reads it).
 async function narrateMorningBrief() {
   let brief = await DailyBrief.findOne().sort({ createdAt: -1 }).lean();
@@ -153,13 +222,9 @@ async function narrateMorningBrief() {
 
   const dateLabel = new Date(`${brief.date}T09:00:00+05:30`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
   const parts = [`Good morning. Here's your Skyup brief for ${dateLabel}.`];
-  // Voice = SHORT (spend + lead outcomes). The full metrics stay on screen
-  // in the Command Center brief card (brief.summary), not spoken aloud.
-  if (brief.spokenSummary) {
-    parts.push(stripMd(brief.spokenSummary));
-  } else if (brief.summary) {
-    parts.push(stripMd(brief.summary));
-  }
+  // Voice = SHORT (spend + lead outcomes). Full metrics stay on the dashboard card.
+  if (brief.spokenSummary) parts.push(stripMd(brief.spokenSummary));
+  else if (brief.summary) parts.push(stripMd(brief.summary));
   const pr = (brief.priorities || []).filter(Boolean);
   if (pr.length) {
     parts.push(`Top ${pr.length === 1 ? 'priority' : `${Math.min(pr.length, 3)} priorities`}:`);

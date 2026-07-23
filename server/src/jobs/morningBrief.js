@@ -6,7 +6,7 @@ import { resolvePeriod, metricsContext } from '../orchestrator/tools.js';
 import { decryptSecret } from '../lib/crypto.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
-import { crmConfigured, leadStats } from '../lib/crm.js';
+import { crmConfigured, leadStats, followUpStats, attendanceToday, projectStats, staleLeads } from '../lib/crm.js';
 import { fetchInsights } from '../services/metaAdsBuilder.js';
 
 const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
@@ -40,6 +40,7 @@ export async function generateMorningBrief() {
     }
   }
 
+  let priorities = [];
   // ---- Skyup daily: SPEND + CRM lead outcomes -------------------------------
   const detailLines = [];
   const spokenBits = [];
@@ -69,20 +70,52 @@ export async function generateMorningBrief() {
     staleOrMissing.add(`Meta spend unavailable: ${e.message}`);
   }
 
-  // (b) CRM lead outcomes for Skyup today.
+  // (b) CRM: leads, hot leads, conversions, follow-ups, attendance, projects.
   if (crmConfigured()) {
     try {
-      const s = await leadStats('today');
+      const [today, yday, fu, att, proj] = await Promise.all([
+        leadStats('today'),
+        leadStats(1),               // ~yesterday+today window for "conversions yesterday" proxy
+        followUpStats().catch(() => ({ due: 0, overdue: 0 })),
+        attendanceToday().catch(() => null),
+        projectStats().catch(() => ({ active: 0 })),
+      ]);
+
       detailLines.push('');
-      detailLines.push(`LEADS TODAY — ${s.total} total:`);
-      detailLines.push(`  • Converted: ${s.converted}   • Interested: ${s.interested}   • New: ${s.newLeads}   • Not interested: ${s.notInterested}`);
-      detailLines.push(`  • Temperature — Hot: ${s.hot}   Warm: ${s.warm}   Cold: ${s.cold}`);
-      spokenBits.push(
-        `${s.total} new lead${s.total === 1 ? '' : 's'} today: ${s.converted} converted, ${s.interested} interested, ${s.warm} warm and ${s.cold} cold.`
-      );
+      detailLines.push(`LEADS TODAY — ${today.total} total:`);
+      detailLines.push(`  • New: ${today.newLeads}   • Interested: ${today.interested}   • Converted: ${today.converted}   • Not interested: ${today.notInterested}`);
+      detailLines.push(`  • Temperature — Hot: ${today.hot}   Warm: ${today.warm}   Cold: ${today.cold}`);
+      detailLines.push(`FOLLOW-UPS — ${fu.due} due today, ${fu.overdue} overdue`);
+      if (att) detailLines.push(`TEAM — ${att.present}/${att.total} present today`);
+      detailLines.push(`PROJECTS — ${proj.active} active`);
+
+      // Stale-lead alert (New/Interested older than 3 days, no follow-up done).
+      try {
+        const stale = await staleLeads(3, 100);
+        if (stale.length) {
+          detailLines.push(`STALE LEADS — ${stale.length} sitting untouched 3+ days`);
+          priorities.unshift(`${stale.length} stale lead${stale.length === 1 ? '' : 's'} (3+ days, no follow-up) — reassign or close`);
+          spokenBits.push(`Heads up: ${stale.length} lead${stale.length === 1 ? '' : 's'} untouched for over three days.`);
+        }
+      } catch { /* non-fatal */ }
+
+      // SHORT spoken version (headline only).
+      const bits = [`${today.total} new lead${today.total === 1 ? '' : 's'} today`];
+      if (today.hot) bits.push(`${today.hot} hot`);
+      if (today.converted) bits.push(`${today.converted} converted`);
+      spokenBits.push(bits.join(', ') + '.');
+      const fuParts = [];
+      if (fu.due) fuParts.push(`${fu.due} follow-up${fu.due === 1 ? '' : 's'} due`);
+      if (fu.overdue) fuParts.push(`${fu.overdue} overdue`);
+      if (fuParts.length) spokenBits.push(fuParts.join(' and ') + '.');
+      if (att) spokenBits.push(`${att.present} of ${att.total} present.`);
+
+      // Actionable priorities from CRM.
+      if (fu.overdue) priorities.unshift(`${fu.overdue} overdue follow-up${fu.overdue === 1 ? '' : 's'} — clear these first`);
+      if (today.hot) priorities.unshift(`${today.hot} hot lead${today.hot === 1 ? '' : 's'} to contact today`);
     } catch (e) {
-      logger.warn({ err: e.message }, '[brief] CRM lead stats failed');
-      staleOrMissing.add(`CRM leads unavailable: ${e.message}`);
+      logger.warn({ err: e.message }, '[brief] CRM stats failed');
+      staleOrMissing.add(`CRM unavailable: ${e.message}`);
     }
   } else {
     staleOrMissing.add('CRM not connected (set CRM_MONGO_URI)');
@@ -90,7 +123,7 @@ export async function generateMorningBrief() {
 
   // ---- assemble ------------------------------------------------------------
   const date = new Date().toLocaleDateString('en-CA', { timeZone: env.BRIEF_TIMEZONE });
-  const priorities = items.sort((a, b) => rank(b.severity) - rank(a.severity)).slice(0, 5).map((i) => `${i.clientName}: ${i.headline}`);
+  priorities = [...priorities, ...items.sort((a, b) => rank(b.severity) - rank(a.severity)).slice(0, 5).map((i) => `${i.clientName}: ${i.headline}`)].slice(0, 6);
 
   const spokenSummary =
     spokenBits.length

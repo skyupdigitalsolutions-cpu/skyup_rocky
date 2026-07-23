@@ -8,7 +8,7 @@ import { requirePermission, canAccessClient } from '../middleware/rbac.js';
 import { PERMISSIONS } from '../config/rbac.js';
 import { asyncHandler, HttpError } from '../middleware/error.js';
 import { audit } from '../middleware/audit.js';
-import { draftCampaignPlan, createPausedCampaign, uploadAdImageFromUrl, adsConfigured } from '../services/metaAdsBuilder.js';
+import { draftCampaignPlan, createPausedCampaign, uploadAdImageFromUrl, adsConfigured, generateCreativeImage } from '../services/metaAdsBuilder.js';
 
 const router = Router();
 router.use(requireAuth, requirePermission(PERMISSIONS.ADS_MANAGE));
@@ -74,6 +74,20 @@ router.post(
 
     await audit(req, 'ads.create_paused', { targetType: 'client', targetId: client._id, meta: { campaignId: result.campaignId } });
     res.status(201).json({ result });
+  })
+);
+
+
+// Generate an AI creative image from a strategy prompt (returns a Cloudinary URL).
+router.post(
+  '/creative',
+  asyncHandler(async (req, res) => {
+    const { clientId, prompt } = z.object({ clientId: z.string(), prompt: z.string().min(4) }).parse(req.body);
+    if (!canAccessClient(req.user, clientId)) throw new HttpError(403, 'Client not in your scope');
+    const client = await Client.findById(clientId).lean();
+    if (!client) throw new HttpError(404, 'Client not found');
+    const out = await generateCreativeImage({ prompt, client });
+    res.json(out);
   })
 );
 

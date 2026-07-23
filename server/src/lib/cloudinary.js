@@ -83,3 +83,24 @@ export async function uploadLocalVideo(localPath, { folder } = {}) {
     height: data.height || 0,
   };
 }
+
+// Upload a base64/data-URI image (e.g. an AI-generated creative) to Cloudinary,
+// returns a stable secure_url we can then hand to Meta as an ad image.
+export async function uploadImageBase64(dataUri, { folder } = {}) {
+  if (!cloudinaryConfigured()) throw new Error('Cloudinary is not configured');
+  const timestamp = Math.floor(Date.now() / 1000);
+  const targetFolder = folder || env.CLOUDINARY_UPLOAD_FOLDER || 'rocky/creatives';
+  const signature = sign({ folder: targetFolder, timestamp });
+  const form = new URLSearchParams();
+  form.append('file', dataUri.startsWith('data:') ? dataUri : `data:image/png;base64,${dataUri}`);
+  form.append('api_key', env.CLOUDINARY_API_KEY);
+  form.append('timestamp', String(timestamp));
+  form.append('folder', targetFolder);
+  form.append('signature', signature);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    method: 'POST', body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Cloudinary image upload failed: ${JSON.stringify(data?.error || data).slice(0,160)}`);
+  return { url: data.secure_url, publicId: data.public_id };
+}

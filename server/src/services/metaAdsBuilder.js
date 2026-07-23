@@ -1,5 +1,8 @@
 import { env } from '../config/env.js';
 import { llmChat } from '../llm/provider.js';
+import { uploadImageBase64 } from '../lib/cloudinary.js';
+import { retrieveForClient } from '../rag/retrieve.js';
+import { Client } from '../models/Client.js';
 
 // Meta Marketing API — WRITE surface (campaign creation). Everything is created
 // PAUSED. Nothing here ever spends money on its own: a human reviews + launches
@@ -34,17 +37,35 @@ async function graph(path, { token, method = 'GET', params = {} } = {}) {
 // (reliable). Interest ideas are returned as TEXT for the human to add in Ads
 // Manager (interest IDs need the Targeting Search API — a later add).
 export async function draftCampaignPlan({ client, goal, dailyBudgetInr = 500 }) {
+  // Ground the plan in Rocky's ad-knowledge base (run: node src/seed/adKnowledge.js)
+  let knowledge = '';
+  try {
+    const kb = await Client.findOne({ name: 'Ad Knowledge Base' }).select('_id').lean();
+    if (kb) {
+      const chunks = await retrieveForClient(kb._id, `${goal} objective optimization targeting lead generation`, { k: 6 });
+      if (chunks.length) knowledge = chunks.map((c) => c.text).join('\n---\n').slice(0, 4500);
+    }
+  } catch { /* knowledge base optional */ }
+
+  const knowledgeBlock = knowledge
+    ? `\n\n<AD_KNOWLEDGE>\nUse the following authoritative Meta/Google ads reference to choose the objective, optimization goal, and targeting. Prefer these rules over assumptions. If lead accuracy needs a Pixel or Instant Form, say so in the strategy.\n${knowledge}\n</AD_KNOWLEDGE>`
+    : '';
+
   const system =
-    `You are Rocky, a senior performance marketer. Draft a lead-generation ad plan for the brand. ` +
+    `You are Rocky, a senior performance marketer. Design a complete lead-generation campaign for the brand — ` +
+    `campaign, ad set and MULTIPLE ad variations — with a strategy rationale. ` +
     `Return STRICT JSON only (no markdown):\n` +
     `{\n` +
+    `  "strategy": "2-3 sentence rationale: who we target, the angle, why it will work",\n` +
     `  "campaignName": "short descriptive name",\n` +
-    `  "targeting": { "ageMin": 18-65, "ageMax": 18-65, "genders": "all|male|female", "countries": ["IN"], "suggestedInterests": ["3-6 interest names for the human to add"] },\n` +
+    `  "objective": "OUTCOME_LEADS|OUTCOME_TRAFFIC|OUTCOME_ENGAGEMENT",\n` +
+    `  "adSet": { "ageMin": 18-65, "ageMax": 18-65, "genders": "all|male|female", "countries": ["IN"], "cities": ["optional city names"], "suggestedInterests": ["3-6 interest names"], "optimizationGoal": "LINK_CLICKS|LANDING_PAGE_VIEWS|LEAD_GENERATION", "schedule": "e.g. run continuously, or 9am-9pm" },\n` +
     `  "dailyBudgetInr": number,\n` +
-    `  "adCopy": { "primaryText": "1-3 lines, hook-first", "headline": "<=40 chars", "description": "<=30 chars", "cta": "LEARN_MORE|SIGN_UP|CONTACT_US|GET_QUOTE|BOOK_TRAVEL|DOWNLOAD" }\n` +
+    `  "ads": [ { "primaryText": "1-3 lines, hook-first", "headline": "<=40 chars", "description": "<=30 chars", "cta": "LEARN_MORE|SIGN_UP|CONTACT_US|GET_QUOTE|SUBSCRIBE" } , ...3 distinct variations ],\n` +
+    `  "creativePrompt": "a vivid, specific image-generation prompt for the ad creative — describe scene, style, mood, colors; NO text/words in the image, brand-appropriate, photorealistic or clean graphic"\n` +
     `}\n\n` +
     `<BRAND>\nName: ${client?.name}\nIndustry: ${client?.industry || 'n/a'}\n` +
-    `Target market: ${client?.targetMarket || 'n/a'}\nWebsite: ${client?.website || 'n/a'}\nNotes: ${client?.brandNotes || 'n/a'}\n</BRAND>`;
+    `Target market: ${client?.targetMarket || 'n/a'}\nWebsite: ${client?.website || 'n/a'}\nNotes: ${client?.brandNotes || 'n/a'}\n</BRAND>` + knowledgeBlock;
 
   const user = `Goal: ${goal}\nSuggested daily budget: INR ${dailyBudgetInr}. Draft the plan.`;
   const { text } = await llmChat({ system, messages: [{ role: 'user', content: user }], maxTokens: 600, temperature: 0.6 });
@@ -56,6 +77,9 @@ export async function draftCampaignPlan({ client, goal, dailyBudgetInr = 500 }) 
     throw new Error('Could not parse the AI plan. Try rephrasing the goal.');
   }
   plan.dailyBudgetInr = Number(plan.dailyBudgetInr) || dailyBudgetInr;
+  // Back-compat + convenience fields for the create step.
+  plan.targeting = plan.adSet || plan.targeting || {};
+  if (Array.isArray(plan.ads) && plan.ads.length) plan.adCopy = plan.ads[0];
   return plan;
 }
 
@@ -171,4 +195,31 @@ export async function fetchInsights({ token, adAccountId, datePreset = 'today', 
   const totalSpend = rows.reduce((sum, r) => sum + Number(r.spend || 0), 0);
   const leads = rows.reduce((sum, r) => sum + (Array.isArray(r.actions) ? r.actions.filter((a) => /lead/i.test(a.action_type)).reduce((x, a) => x + Number(a.value || 0), 0) : 0), 0);
   return { rows, totalSpend, leads };
+}
+
+
+// Generate an ad creative image with OpenAI, store it on Cloudinary, return a URL.
+export async function generateCreativeImage({ prompt, client }) {
+  if (!env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
+  const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+  const fullPrompt =
+    `${prompt}\n\nBrand: ${client?.name || ''} (${client?.industry || ''}). ` +
+    `Instagram/Facebook ad creative, square, high quality, no watermark, no logos, no readable text.`;
+
+  const body = { model, prompt: fullPrompt, size: '1024x1024', n: 1 };
+  // dall-e-3 needs an explicit response_format; gpt-image-1 returns b64 by default.
+  if (model.includes('dall-e')) body.response_format = 'b64_json';
+
+  const r = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${env.OPENAI_API_KEY}` },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Image generation failed: ${JSON.stringify(d?.error || d).slice(0, 200)}`);
+  const b64 = d.data?.[0]?.b64_json;
+  if (!b64) throw new Error('No image returned by the model');
+
+  const { url } = await uploadImageBase64(b64, { folder: 'rocky/creatives' });
+  return { imageUrl: url, prompt: fullPrompt };
 }
