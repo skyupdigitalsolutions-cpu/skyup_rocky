@@ -1,6 +1,7 @@
 import { Document, DocumentChunk } from '../models/Document.js';
 import { chunkText } from './chunker.js';
 import { embedMany } from '../llm/embeddings.js';
+import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 
 // Process a document into embedded, client-scoped chunks. Idempotent per doc:
@@ -34,6 +35,8 @@ export async function ingestDocument(documentId, rawText) {
         text: p.text,
         tokens: p.tokens,
         embedding: vectors[i],
+        embeddingModel: env.EMBEDDINGS_MODEL,
+        embeddingDim: env.EMBEDDINGS_DIM,
       }))
     );
 

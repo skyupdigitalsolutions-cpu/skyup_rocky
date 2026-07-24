@@ -40,7 +40,7 @@ const schema = z.object({
   OPENAI_API_KEY: z.string().default(''),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
 
-  EMBEDDINGS_PROVIDER: z.enum(['mock', 'openai']).default('mock'),
+  EMBEDDINGS_PROVIDER: z.enum(['mock', 'openai']).default('openai'),
   EMBEDDINGS_MODEL: z.string().default('text-embedding-3-small'),
   EMBEDDINGS_DIM: z.coerce.number().default(1536),
   VECTOR_INDEX_NAME: z.string().default('rocky_chunk_index'),

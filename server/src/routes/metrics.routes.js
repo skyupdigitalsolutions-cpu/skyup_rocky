@@ -13,7 +13,10 @@ const router = Router();
 router.use(requireAuth, requirePermission(PERMISSIONS.CLIENT_READ));
 
 // Only real lead/conversion actions — never clicks/views/likes.
-const LEAD_ACTION = /(^lead$|leadgen|onsite_conversion\.lead|offsite_conversion|complete_registration|submit_application|purchase|contact|schedule|subscribe)/i;
+// Count ONLY genuine lead-form submissions — matches Meta Ads Manager's default
+// 'Leads' column. Excluding contact/schedule/subscribe/purchase etc. which are
+// soft engagement actions that inflate the count vs real form submissions.
+const LEAD_ACTION = /^(lead|leadgen|onsite_conversion\.lead)$/i;
 
 function sumLeads(actions) {
   if (!Array.isArray(actions)) return 0;

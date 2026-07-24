@@ -19,10 +19,11 @@ import { env } from '../config/env.js';
 // Usage (from the server folder):
 //   node src/seed/adKnowledge.js                      # reads src/seed/ads-knowledge/rag_chunks.jsonl
 //   node src/seed/adKnowledge.js path\to\rag_chunks.jsonl
+//   node src/seed/adKnowledge.js path\to\rag_chunks.jsonl "Marketing Strategy KB"   # named collection
 //
 // REQUIRES real embeddings: set EMBEDDINGS_PROVIDER=openai in .env.
 
-const KB_NAME = 'Ad Knowledge Base';
+const KB_NAME = process.argv[3] || 'Ad Knowledge Base';
 const DEFAULT_JSONL = path.resolve(process.cwd(), 'src/seed/ads-knowledge/rag_chunks.jsonl');
 
 async function main() {
@@ -95,6 +96,8 @@ async function main() {
       text: r.text,
       tokens: Math.ceil((r.text || '').length / 4),
       embedding: vectors[i],
+      embeddingModel: env.EMBEDDINGS_MODEL,
+      embeddingDim: env.EMBEDDINGS_DIM,
     })));
 
     doc.status = 'ready';
@@ -104,7 +107,7 @@ async function main() {
     console.log(`  • ${docPath} — ${recs.length} chunk(s)`);
   }
 
-  const platforms = records.reduce((m, r) => { m[r.platform] = (m[r.platform] || 0) + 1; return m; }, {});
+  const platforms = records.reduce((m, r) => { const k = r.platform || r.collection || 'general'; m[k] = (m[k] || 0) + 1; return m; }, {});
   console.log(`\n✅ Ad Knowledge Base ready — ${byPath.size} docs, ${totalChunks} chunks (v${version}).`);
   console.log(`   Platforms: ${Object.entries(platforms).map(([k, v]) => `${k}:${v}`).join(', ')}`);
   console.log('   Campaign drafting is now grounded in this pack. Re-run anytime you refresh the JSONL.\n');

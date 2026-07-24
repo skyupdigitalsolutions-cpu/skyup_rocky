@@ -11,7 +11,7 @@ import { logger } from './lib/logger.js';
 import { notFound, errorHandler } from './middleware/error.js';
 import { startSchedulers } from './jobs/queue.js';
 import { usingMockLLM } from './llm/provider.js';
-import { usingMockEmbeddings } from './llm/embeddings.js';
+import { usingMockEmbeddings, verifyEmbeddings } from './llm/embeddings.js';
 
 import authRoutes from './routes/auth.routes.js';
 import usersRoutes from './routes/users.routes.js';
@@ -71,6 +71,17 @@ app.use(errorHandler);
 
 async function start() {
   await connectDb();
+
+  // Fail LOUDLY if embeddings aren't real OpenAI or the DIM is wrong — never
+  // let RAG run on misconfigured/mismatched vectors.
+  try {
+    const info = await verifyEmbeddings();
+    logger.info(`[embeddings] verified — ${info.model} (${info.dim} dims)`);
+  } catch (err) {
+    logger.error(`[rocky] FATAL: ${err.message}`);
+    process.exit(1);
+  }
+
   startSchedulers();
   app.listen(env.PORT, () => {
     logger.info(`[rocky] server on :${env.PORT} (env=${env.NODE_ENV}, llm=${env.LLM_PROVIDER})`);

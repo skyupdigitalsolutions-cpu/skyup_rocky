@@ -1,46 +1,70 @@
 import { env } from '../config/env.js';
-import { sha256 } from '../lib/crypto.js';
-import { logger } from '../lib/logger.js';
 
-// Returns a vector of length env.EMBEDDINGS_DIM for a string.
+// OpenAI embeddings ONLY. No mock/hash fallback: mock vectors aren't
+// semantically meaningful, and silently using them makes RAG retrieval random —
+// worse the larger the knowledge base. We fail LOUDLY instead of degrading.
+
+const BATCH_SIZE = 96; // OpenAI accepts many inputs per request
+
+function assertConfigured() {
+  if (env.EMBEDDINGS_PROVIDER !== 'openai') {
+    throw new Error(`[embeddings] EMBEDDINGS_PROVIDER must be "openai" (got "${env.EMBEDDINGS_PROVIDER}"). Mock embeddings are disabled.`);
+  }
+  if (!env.OPENAI_API_KEY) {
+    throw new Error('[embeddings] OPENAI_API_KEY is missing. Set it in .env — RAG cannot run without real embeddings.');
+  }
+}
+
+export function embeddingsReady() {
+  return env.EMBEDDINGS_PROVIDER === 'openai' && Boolean(env.OPENAI_API_KEY);
+}
+
+// Single-string embedding.
 export async function embed(text) {
-  if (env.EMBEDDINGS_PROVIDER === 'openai' && env.OPENAI_API_KEY) {
-    return openaiEmbed(text);
-  }
-  if (env.EMBEDDINGS_PROVIDER === 'openai') {
-    logger.warn('[embeddings] provider=openai but no OPENAI_API_KEY — using mock embeddings');
-  }
-  return mockEmbed(text);
+  assertConfigured();
+  const [v] = await openaiEmbedBatch([text]);
+  return v;
 }
 
+// Batched embedding — chunks the array into BATCH_SIZE requests (fast + fewer
+// API calls for large-scale ingestion). Returns vectors in input order.
 export async function embedMany(texts) {
-  return Promise.all(texts.map((t) => embed(t)));
-}
-
-// Deterministic pseudo-embedding: hash-seeded unit vector. Not semantically
-// meaningful, but stable + comparable so RAG plumbing is fully testable offline.
-function mockEmbed(text) {
-  const dim = env.EMBEDDINGS_DIM;
-  const seed = sha256(text);
-  const v = new Array(dim);
-  for (let i = 0; i < dim; i++) {
-    const b = seed[i % seed.length];
-    v[i] = (b / 255) * 2 - 1;
+  assertConfigured();
+  const out = [];
+  for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+    const batch = texts.slice(i, i + BATCH_SIZE);
+    const vecs = await openaiEmbedBatch(batch);
+    out.push(...vecs);
   }
-  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
-  return v.map((x) => x / norm);
+  return out;
 }
 
-async function openaiEmbed(text) {
+async function openaiEmbedBatch(inputs) {
   const res = await fetch('https://api.openai.com/v1/embeddings', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${env.OPENAI_API_KEY}` },
-    body: JSON.stringify({ model: env.EMBEDDINGS_MODEL, input: text }),
+    body: JSON.stringify({ model: env.EMBEDDINGS_MODEL, input: inputs }),
   });
   if (!res.ok) throw new Error(`OpenAI embeddings ${res.status}: ${await res.text()}`);
   const data = await res.json();
-  return data.data[0].embedding;
+  // Sort by index so order matches inputs regardless of API ordering.
+  return data.data.slice().sort((a, b) => a.index - b.index).map((d) => d.embedding);
 }
 
-export const usingMockEmbeddings = () =>
-  env.EMBEDDINGS_PROVIDER === 'mock' || !env.OPENAI_API_KEY;
+// Boot-time verification: confirms the key works, the provider is OpenAI, and —
+// critically — that the model's real output dimension matches EMBEDDINGS_DIM.
+// Throws a clear, actionable error otherwise.
+export async function verifyEmbeddings() {
+  assertConfigured();
+  const v = await openaiEmbedBatch(['ping']);
+  const dim = v[0]?.length || 0;
+  if (dim !== env.EMBEDDINGS_DIM) {
+    throw new Error(
+      `[embeddings] DIM MISMATCH: model "${env.EMBEDDINGS_MODEL}" returns ${dim} dims but EMBEDDINGS_DIM=${env.EMBEDDINGS_DIM}. ` +
+      `Set EMBEDDINGS_DIM=${dim} in .env (and re-embed if you changed models).`
+    );
+  }
+  return { ok: true, model: env.EMBEDDINGS_MODEL, dim };
+}
+
+export const usingMockEmbeddings = () => !embeddingsReady();

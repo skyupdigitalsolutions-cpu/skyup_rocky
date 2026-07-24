@@ -39,6 +39,7 @@ const clientSchema = new mongoose.Schema(
       gscSiteUrl: { type: String, default: '' },
       ga4PropertyId: { type: String, default: '' },
       instagramUserId: { type: String, default: '' }, // IG business account id (for reel publishing)
+      facebookPageId: { type: String, default: '' },   // Facebook Page id (for Meta Ads creative)
     },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

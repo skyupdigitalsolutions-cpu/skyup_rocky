@@ -1,0 +1,18 @@
+{
+  "name": "Rocky IIM Bangalore Marketing Strategy RAG",
+  "version": "2026-07-24",
+  "scope": "Original strategy summaries derived only from publicly accessible IIM Bangalore/IIMBx materials.",
+  "not_an_official_iimb_product": true,
+  "client_data_included": false,
+  "chunks": 20,
+  "sources": {
+    "marketing_area": "https://www.iimb.ac.in/faculty/marketing",
+    "curriculum": "https://www.iimb.ac.in/programmes/pgpem/structure-curriculum",
+    "digital_marketing": "https://www.iimb.ac.in/node/5597",
+    "consumer_course": "https://iimbx.iimb.ac.in/catalog/consumer-behaviour/",
+    "online_psych": "https://research.iimb.ac.in/books/10/",
+    "marketing_management": "https://www.iimb.ac.in/node/14039",
+    "doctoral": "https://www.iimb.ac.in/programmes/doctoral-programme/specializations/market",
+    "annual_report": "https://www.iimb.ac.in/sites/default/files/2021-02/IIMB_Annual%20Report_2019-20.pdf"
+  }
+}

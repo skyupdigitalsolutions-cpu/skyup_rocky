@@ -1,0 +1,32 @@
+{
+  "name": "Rocky Ads RAG Knowledge Pack",
+  "version": "2026-07-24",
+  "scope": "Publicly accessible official Meta and Google advertising documentation, summarized in original wording for RAG grounding.",
+  "client_data_included": false,
+  "record_count": 34,
+  "important": "This is a curated foundation, not a complete mirror of every platform help page. Refresh time-sensitive platform rules regularly.",
+  "sources": {
+    "google_campaign_types": "https://support.google.com/google-ads/answer/2567043?hl=en",
+    "google_pmax": "https://support.google.com/google-ads/answer/10724817?hl=en-in",
+    "google_demand_gen": "https://support.google.com/google-ads/answer/13695777?hl=en",
+    "google_keyword_matching": "https://support.google.com/google-ads/answer/14996023?hl=en",
+    "google_negative_keywords": "https://support.google.com/google-ads/answer/16668865?hl=en",
+    "google_smart_bidding": "https://support.google.com/google-ads/answer/7065882?hl=en-in",
+    "google_tcpa": "https://support.google.com/google-ads/answer/6268632?hl=en-IN",
+    "google_troas": "https://support.google.com/google-ads/answer/6268637?hl=en",
+    "google_enhanced_conversions": "https://support.google.com/google-ads/answer/9888656?hl=en-EN",
+    "google_consent_mode": "https://support.google.com/google-ads/answer/10000067?hl=en",
+    "google_india_tax": "https://support.google.com/google-ads/answer/2375370?hl=en",
+    "google_data_policy": "https://support.google.com/adspolicy/answer/6020956?hl=en",
+    "google_personalized": "https://support.google.com/adspolicy/answer/6242605?hl=en",
+    "meta_advantage_audience": "https://www.facebook.com/business/ads/meta-advantage-plus/audience",
+    "meta_advantage_placements": "https://www.facebook.com/business/ads/meta-advantage-plus/placements",
+    "meta_capi": "https://www.facebook.com/business/help/AboutConversionsAPI",
+    "meta_pixel": "https://www.facebook.com/help/messenger-app/952192354843755/",
+    "meta_campaign_creation": "https://www.facebook.com/help/messenger-app/621956575422138/",
+    "meta_bid_strategy": "https://www.facebook.com/business/m/one-sheeters/facebook-bid-strategy-guide",
+    "meta_performance": "https://www.facebook.com/business/ads/performance-marketing",
+    "meta_status_learning": "https://www.facebook.com/help/messenger-app/650774041651557/",
+    "meta_pricing": "https://www.facebook.com/business/ads/pricing"
+  }
+}

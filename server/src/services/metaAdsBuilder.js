@@ -37,29 +37,58 @@ async function graph(path, { token, method = 'GET', params = {} } = {}) {
 // (reliable). Interest ideas are returned as TEXT for the human to add in Ads
 // Manager (interest IDs need the Targeting Search API — a later add).
 export async function draftCampaignPlan({ client, goal, dailyBudgetInr = 500 }) {
-  // Ground the plan in Rocky's ad-knowledge base (run: node src/seed/adKnowledge.js)
-  let knowledge = '';
-  try {
-    const kb = await Client.findOne({ name: 'Ad Knowledge Base' }).select('_id').lean();
-    if (kb) {
-      const chunks = await retrieveForClient(kb._id, `${goal} objective optimization targeting lead generation`, { k: 6 });
-      if (chunks.length) knowledge = chunks.map((c) => c.text).join('\n---\n').slice(0, 4500);
-    }
-  } catch { /* knowledge base optional */ }
+  // Two-stage grounding (ChatGPT's architecture):
+  //  1) Marketing Strategy KB (IIMB-derived) — WHO to target and WHY.
+  //  2) Ad Knowledge Base (Meta/Google official docs) — HOW Ads Manager executes it.
+  // Kept as separate collections so each informs the right part of the plan.
+  // Single consolidated master collection. Retrieve INDEPENDENTLY per level
+  // (strategy / campaign / ad-set / ad / measurement / system) instead of one
+  // generic top-k. Only current-model vectors are used (never mix vector spaces).
+  const M = env.EMBEDDINGS_MODEL;
+  const KB = 'Ad Knowledge Base';
+  let kbId = null;
+  try { kbId = (await Client.findOne({ name: KB }).select('_id').lean())?._id || null; } catch { kbId = null; }
+  const tier = async (query, k, levels) => {
+    if (!kbId) return [];
+    try {
+      const where = { embeddingModel: M, ...(levels ? { level: { $in: levels } } : {}) };
+      return await retrieveForClient(kbId, query, { k, where });
+    } catch { return []; }
+  };
+
+  const strat = await tier(`${goal} audience segmentation positioning consumer behaviour who why`, 4, ['strategy']);
+  const execCampaign = await tier(`${goal} campaign objective budget CBO campaign type special ad category`, 3, ['campaign', 'account', 'campaign_ad_group']);
+  const execAdSet = await tier(`${goal} ad set ad group targeting audience placements optimization goal bidding keywords negatives`, 5, ['ad_set', 'ad_group', 'asset_group', 'campaign_ad_group', 'ad_set_ad']);
+  const execAd = await tier(`${goal} ad creative headline primary text description cta RSA specs character limits format`, 3, ['ad', 'ad_set_ad']);
+  const measure = await tier(`${goal} conversion tracking pixel CAPI enhanced conversions measurement`, 2, ['measurement', 'account']);
+  const rules = await tier(`${goal} decision rules preflight validation live API provenance`, 2, ['system']);
+
+  const parts = [];
+  const add = (label, arr) => { if (arr.length) parts.push(`${label}:\n${arr.map((c) => c.text).join('\n---\n')}`); };
+  add('STRATEGIC REASONING (who to target & why — IIMB-derived)', strat);
+  add('CAMPAIGN-LEVEL RULES (official)', execCampaign);
+  add('AD-SET / AD-GROUP / ASSET-GROUP-LEVEL RULES (official)', execAdSet);
+  add('AD / CREATIVE-LEVEL RULES (official specs)', execAd);
+  add('MEASUREMENT RULES (official)', measure);
+  add('EXECUTION / VALIDATION RULES', rules);
+  const knowledge = parts.join('\n\n').slice(0, 8500);
 
   const knowledgeBlock = knowledge
-    ? `\n\n<AD_KNOWLEDGE>\nUse the following authoritative Meta/Google ads reference to choose the objective, optimization goal, and targeting. Prefer these rules over assumptions. If lead accuracy needs a Pixel or Instant Form, say so in the strategy.\n${knowledge}\n</AD_KNOWLEDGE>`
+    ? `\n\n<AD_KNOWLEDGE>\nGround the plan in the tiered reference below. Use STRATEGIC REASONING for the audience/angle; CAMPAIGN-LEVEL for objective/budget; AD-SET-LEVEL for targeting, optimization goal and bidding; AD-LEVEL for creative/copy specs and character limits; MEASUREMENT for tracking prerequisites. Prefer newer official rules over assumptions. If lead accuracy needs a Pixel or Instant Form, say so. Do NOT invent targeting IDs, audience sizes, or benchmark numbers.\n${knowledge}\n</AD_KNOWLEDGE>`
     : '';
 
   const system =
-    `You are Rocky, a senior performance marketer. Design a complete lead-generation campaign for the brand — ` +
-    `campaign, ad set and MULTIPLE ad variations — with a strategy rationale. ` +
+    `You are Rocky, a senior performance marketer. Design the RIGHT campaign for the goal — do NOT assume lead generation. ` +
+    `Choose the objective that best matches the business goal: store/product orders => OUTCOME_SALES; website visits/reads => OUTCOME_TRAFFIC; form or enquiry leads => OUTCOME_LEADS; WhatsApp/DMs/post interaction => OUTCOME_ENGAGEMENT; brand reach => OUTCOME_AWARENESS. ` +
+    `Produce a campaign, ad set and MULTIPLE ad variations with a strategy rationale. ` +
     `Return STRICT JSON only (no markdown):\n` +
     `{\n` +
     `  "strategy": "2-3 sentence rationale: who we target, the angle, why it will work",\n` +
     `  "campaignName": "short descriptive name",\n` +
-    `  "objective": "OUTCOME_LEADS|OUTCOME_TRAFFIC|OUTCOME_ENGAGEMENT",\n` +
-    `  "adSet": { "ageMin": 18-65, "ageMax": 18-65, "genders": "all|male|female", "countries": ["IN"], "cities": ["optional city names"], "suggestedInterests": ["3-6 interest names"], "optimizationGoal": "LINK_CLICKS|LANDING_PAGE_VIEWS|LEAD_GENERATION", "schedule": "e.g. run continuously, or 9am-9pm" },\n` +
+    `  "objective": "OUTCOME_AWARENESS|OUTCOME_TRAFFIC|OUTCOME_ENGAGEMENT|OUTCOME_LEADS|OUTCOME_SALES",\n` +
+    `  "objectiveRationale": "1-2 sentences on why this objective best fits the goal",\n` +
+    `  "requiresSetup": "none|pixel|instant_form",\n` +
+    `  "adSet": { "ageMin": 18-65, "ageMax": 18-65, "genders": "all|male|female", "countries": ["IN"], "cities": ["optional city names"], "suggestedInterests": ["3-6 interest names"], "optimizationGoal": "REACH|POST_ENGAGEMENT|LINK_CLICKS|LANDING_PAGE_VIEWS|LEAD_GENERATION|OFFSITE_CONVERSIONS", "schedule": "e.g. run continuously, or 9am-9pm" },\n` +
     `  "dailyBudgetInr": number,\n` +
     `  "ads": [ { "primaryText": "1-3 lines, hook-first", "headline": "<=40 chars", "description": "<=30 chars", "cta": "LEARN_MORE|SIGN_UP|CONTACT_US|GET_QUOTE|SUBSCRIBE" } , ...3 distinct variations ],\n` +
     `  "creativePrompt": "a vivid, specific image-generation prompt for the ad creative — describe scene, style, mood, colors; NO text/words in the image, brand-appropriate, photorealistic or clean graphic"\n` +
@@ -108,6 +137,14 @@ export async function createPausedCampaign({
   if (!pageId) throw new Error('Missing Facebook Page id (needed for the ad creative)');
   if (!link) throw new Error('Missing destination link/website');
 
+  // The AI now picks the objective that fits the goal. Map it to a Meta-VALID
+  // (objective, optimization_goal, billing_event) that will create cleanly with
+  // a plain website link ad. LEADS/SALES need an Instant Form or Pixel we don't
+  // auto-create, so without them we create as TRAFFIC and return a note telling
+  // the human what to enable to switch to true lead/sales optimization.
+  const chosenObjective = String(plan.objective || objective || 'OUTCOME_TRAFFIC').toUpperCase();
+  const exec = safeExecution(chosenObjective, { hasPixel: false, hasForm: false });
+
   const t = plan.targeting || {};
   const genders = t.genders === 'male' ? [1] : t.genders === 'female' ? [2] : undefined;
   const targeting = {
@@ -123,25 +160,34 @@ export async function createPausedCampaign({
   // Campaign (PAUSED)
   const campaign = await graph(`act_${adAccountId}/campaigns`, {
     token, method: 'POST',
-    params: { name: plan.campaignName || 'Rocky campaign', objective, status: 'PAUSED', special_ad_categories: [] },
+    params: {
+      name: plan.campaignName || 'Rocky campaign',
+      objective: exec.objective,
+      status: 'PAUSED',
+      special_ad_categories: [],
+      is_adset_budget_sharing_enabled: false,
+    },
   });
 
   // Ad set (PAUSED)
+  // targeting_optimization_types with advantage_audience=0 explicitly opts out
+  // of Advantage+ audience expansion. Required field in Meta API v19+.
   const adset = await graph(`act_${adAccountId}/adsets`, {
     token, method: 'POST',
     params: {
       name: `${plan.campaignName || 'Rocky'} — Ad set`,
       campaign_id: campaign.id,
       daily_budget: dailyBudgetMinor,
-      billing_event: 'IMPRESSIONS',
-      optimization_goal: optimizationGoal,
+      billing_event: exec.billing_event,
+      optimization_goal: exec.optimization_goal,
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       targeting,
+      advantage_audience: 0,
       status: 'PAUSED',
     },
   });
 
-  // Ad creative
+  // Ad creative — use degrees_of_freedom_spec for 2025+ API
   const creative = await graph(`act_${adAccountId}/adcreatives`, {
     token, method: 'POST',
     params: {
@@ -157,13 +203,21 @@ export async function createPausedCampaign({
           call_to_action: { type: cta, value: { link } },
         },
       },
+      degrees_of_freedom_spec: {
+        creative_features_spec: { standard_enhancements: { enroll_status: 'OPT_OUT' } },
+      },
     },
   });
 
   // Ad (PAUSED)
   const ad = await graph(`act_${adAccountId}/ads`, {
     token, method: 'POST',
-    params: { name: `${plan.campaignName || 'Rocky'} — Ad`, adset_id: adset.id, creative: { creative_id: creative.id }, status: 'PAUSED' },
+    params: {
+      name: `${plan.campaignName || 'Rocky'} — Ad`,
+      adset_id: adset.id,
+      creative: { creative_id: creative.id },
+      status: 'PAUSED',
+    },
   });
 
   return {
@@ -172,6 +226,10 @@ export async function createPausedCampaign({
     creativeId: creative.id,
     adId: ad.id,
     status: 'PAUSED',
+    recommendedObjective: chosenObjective,
+    createdObjective: exec.objective,
+    optimizationGoal: exec.optimization_goal,
+    note: exec.note || '',
     adsManagerUrl: `https://www.facebook.com/adsmanager/manage/campaigns?act=${adAccountId}&selected_campaign_ids=${campaign.id}`,
   };
 }
@@ -179,6 +237,34 @@ export async function createPausedCampaign({
 function clamp(n, lo, hi) {
   n = Number(n) || lo;
   return Math.max(lo, Math.min(hi, n));
+}
+
+// Map an AI-chosen objective to a Meta-valid execution that creates cleanly with
+// a website link ad. LEADS/SALES fall back to TRAFFIC unless a form/pixel exists.
+function safeExecution(objective, { hasPixel = false, hasForm = false } = {}) {
+  switch (objective) {
+    case 'OUTCOME_AWARENESS':
+      return { objective: 'OUTCOME_AWARENESS', optimization_goal: 'REACH', billing_event: 'IMPRESSIONS' };
+    case 'OUTCOME_ENGAGEMENT':
+      return { objective: 'OUTCOME_ENGAGEMENT', optimization_goal: 'POST_ENGAGEMENT', billing_event: 'IMPRESSIONS' };
+    case 'OUTCOME_TRAFFIC':
+      return { objective: 'OUTCOME_TRAFFIC', optimization_goal: 'LANDING_PAGE_VIEWS', billing_event: 'IMPRESSIONS' };
+    case 'OUTCOME_LEADS':
+      if (hasForm) return { objective: 'OUTCOME_LEADS', optimization_goal: 'LEAD_GENERATION', billing_event: 'IMPRESSIONS' };
+      if (hasPixel) return { objective: 'OUTCOME_LEADS', optimization_goal: 'OFFSITE_CONVERSIONS', billing_event: 'IMPRESSIONS' };
+      return {
+        objective: 'OUTCOME_TRAFFIC', optimization_goal: 'LANDING_PAGE_VIEWS', billing_event: 'IMPRESSIONS',
+        note: 'Recommended objective was Leads, but no Instant Form or Pixel is set up — so this was created as Traffic (landing-page views) to build cleanly. Add an Instant Form, or install the Meta Pixel + a Lead event, then switch the objective to Leads in Ads Manager to optimize for real lead submissions.',
+      };
+    case 'OUTCOME_SALES':
+      if (hasPixel) return { objective: 'OUTCOME_SALES', optimization_goal: 'OFFSITE_CONVERSIONS', billing_event: 'IMPRESSIONS' };
+      return {
+        objective: 'OUTCOME_TRAFFIC', optimization_goal: 'LANDING_PAGE_VIEWS', billing_event: 'IMPRESSIONS',
+        note: 'Recommended objective was Sales, but no Pixel/Purchase event is set up — so this was created as Traffic. Install the Meta Pixel + Purchase event, then switch to Sales in Ads Manager to optimize for conversions.',
+      };
+    default:
+      return { objective: 'OUTCOME_TRAFFIC', optimization_goal: 'LANDING_PAGE_VIEWS', billing_event: 'IMPRESSIONS' };
+  }
 }
 
 // ---- Read: account insights (spend etc.) for the morning brief --------------

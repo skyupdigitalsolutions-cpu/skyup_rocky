@@ -1,0 +1,14 @@
+{
+  "name": "Rocky Ads Master Knowledge Base",
+  "version": "2026-07-24",
+  "includes": [
+    "rocky_ads_rag_knowledge_2026_07.zip",
+    "rocky_iimb_marketing_strategy_rag_2026_07.zip",
+    "rocky_3level_execution_rag_v1_2026_07.zip"
+  ],
+  "master_extra_documents": 13,
+  "markdown_documents_consolidated": 64,
+  "client_data_included": false,
+  "scope": "IIMB-derived strategy + Meta/Google official foundation + three-level execution + 2026 API/measurement hardening + Rocky feedback/provenance rules.",
+  "production_note": "Static RAG cannot replace live platform validation, account data, policy eligibility, forecasts, IDs, or results feedback."
+}

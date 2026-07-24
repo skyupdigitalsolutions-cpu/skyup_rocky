@@ -162,12 +162,18 @@ function Gauge({ value = 82 }) {
     </svg>
   );
 }
-function Donut() {
+function Donut({ pipeline }) {
+  const total = pipeline?.total || 0;
   const segs = [
-    { v: 35, c: 'var(--hud)', label: 'New', n: 58 }, { v: 33, c: 'var(--amber)', label: 'Contacted', n: 55 },
-    { v: 19, c: '#4f9cf9', label: 'Qualified', n: 32 }, { v: 13, c: 'var(--green)', label: 'Closed', n: 20 },
-  ];
+    { c: 'var(--hud)', label: 'New', n: pipeline?.new || 0 },
+    { c: 'var(--amber)', label: 'Interested', n: pipeline?.interested || 0 },
+    { c: 'var(--green)', label: 'Converted', n: pipeline?.converted || 0 },
+    { c: 'var(--muted-2)', label: 'Not interested', n: pipeline?.notInterested || 0 },
+  ].map((x) => ({ ...x, v: total ? Math.round((x.n / total) * 100) : 0 }));
   const r = 46, c = 2 * Math.PI * r; let acc = 0;
+  if (!total) {
+    return <div className="cc-donut-wrap"><div className="small muted" style={{ padding: 20 }}>No leads in the CRM yet for this period.</div></div>;
+  }
   return (
     <div className="cc-donut-wrap">
       <svg width="120" height="120" viewBox="0 0 120 120">
@@ -178,7 +184,7 @@ function Donut() {
             strokeDasharray={`${dash} ${c - dash}`} strokeDashoffset={-acc} transform="rotate(-90 60 60)" />;
           acc += dash; return el;
         })}
-        <text x="60" y="57" textAnchor="middle" fill="#fff" style={{ font: '700 20px var(--display)' }}>165</text>
+        <text x="60" y="57" textAnchor="middle" fill="#fff" style={{ font: '700 20px var(--display)' }}>{total}</text>
         <text x="60" y="73" textAnchor="middle" fill="var(--muted)" style={{ font: '600 8px var(--ui)', letterSpacing: '1px' }}>TOTAL LEADS</text>
       </svg>
       <div className="cc-legend">
@@ -461,10 +467,12 @@ export default function CommandCenter() {
   const metaToday = metrics?.meta?.today;
   const metaWeek  = metrics?.meta?.week;
   const gadsWeek  = metrics?.googleAds?.week;
+  const crmToday  = metrics?.crm?.today;
+  const crmPipe   = metrics?.crm?.pipeline;
   const fmtInr = (n) => n != null && n > 0 ? `₹${Number(n).toLocaleString('en-IN')}` : '—';
   const stats = [
-    { v: clients.length || '—', l: 'Active Clients' },
-    { v: '—', l: 'Active Campaigns' },
+    { v: clients.filter((c) => c.status === 'active').length || '—', l: 'Active Clients' },
+    { v: crmToday?.converted != null ? crmToday.converted : '—', l: 'Conversions Today' },
     { v: metaToday?.spend != null ? fmtInr(metaToday.spend) : '—', l: 'Total Spend Today', hud: true },
     { v: metaToday?.conversions != null ? metaToday.conversions : '—', l: 'Leads Generated' },
     { v: '—', l: 'Agency Health' },
@@ -495,7 +503,7 @@ export default function CommandCenter() {
           <div className="ph"><span className="ic"><Icon d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z" /></span><span className="ttl">Meta Ads</span>{!metaToday && <span className="cc-sample" style={{marginLeft:8}}>not synced yet</span>}</div>
           <div className="rowm">
             <div className="m"><div className="k">Spend Today</div><div className="val">{metaToday?.spend != null ? fmtInr(metaToday.spend) : '—'}</div></div>
-            <div className="m"><div className="k">Conversions</div><div className="val">{metaToday?.conversions ?? '—'}</div></div>
+            <div className="m"><div className="k">Leads</div><div className="val">{metaToday?.conversions ?? '—'}</div></div>
             <div className="m"><div className="k">ROAS</div><div className="val">{metaToday?.roas != null && metaToday.roas > 0 ? metaToday.roas + 'x' : '—'}</div></div>
           </div>
           {metaWeek && <div className="small muted" style={{marginTop:6}}>7-day: {fmtInr(metaWeek.spend)} spend · {metaWeek.conversions} conversions · CTR {metaWeek.ctr}%</div>}
@@ -591,8 +599,7 @@ export default function CommandCenter() {
       </div>
 
       <div className="cc-panel" style={{ gridColumn: '1 / 2' }}>
-        <span className="cc-sample">SAMPLE</span>
-        <div className="ph"><span className="ttl">Top Campaigns</span></div>
+        <div className="ph"><span className="ttl">Top Campaigns</span><span className="cc-sample" style={{marginLeft:8}}>coming soon</span></div>
         <table className="cc-tbl">
           <thead><tr><th>Campaign</th><th>CTR</th><th>ROAS</th></tr></thead>
           <tbody>
@@ -603,9 +610,8 @@ export default function CommandCenter() {
         </table>
       </div>
       <div className="cc-panel" style={{ gridColumn: '2 / 3' }}>
-        <span className="cc-sample">SAMPLE</span>
-        <div className="ph"><span className="ttl">Leads Overview</span></div>
-        <Donut />
+        <div className="ph"><span className="ttl">Leads Overview</span>{!crmPipe && <span className="cc-sample" style={{marginLeft:8}}>connect CRM</span>}</div>
+        <Donut pipeline={crmPipe} />
       </div>
       <div style={{ gridColumn: '3 / 4' }}>
         <ActivityFeed />

@@ -45,6 +45,7 @@ const NAV = [
   { to: '/chat', label: 'Ask Rocky', icon: 'chat' },
   { to: '/clients', label: 'Clients', icon: 'clients' },
   { to: '/reels', label: 'Social Media', icon: 'reels' },
+  { to: '/attribution', label: 'Attribution', icon: 'ads' },
   { to: '/ads', label: 'Ads Manager', icon: 'ads' },
   { to: '/integrations/select', label: 'Integrations', icon: 'integ' },
   { to: '/settings', label: 'Settings', icon: 'settings', perm: 'user:manage' },

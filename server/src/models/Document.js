@@ -37,6 +37,8 @@ const chunkSchema = new mongoose.Schema(
     order: { type: Number, default: 0 },
     text: { type: String, required: true },
     embedding: { type: [Number], default: [] },
+    embeddingModel: { type: String, default: '' },
+    embeddingDim: { type: Number, default: 0 },
     tokens: { type: Number, default: 0 },
   },
   { timestamps: true }

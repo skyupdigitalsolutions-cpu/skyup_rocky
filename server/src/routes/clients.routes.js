@@ -46,6 +46,8 @@ router.get(
   requirePermission(PERMISSIONS.CLIENT_READ),
   asyncHandler(async (req, res) => {
     const filter = scopedClientFilter(req.user) || {};
+    // Never surface system knowledge-base clients in the UI — they're RAG containers, not real clients.
+    filter.name = { $not: /knowledge base/i };
     const q = req.query.q;
     const find = q ? { ...filter, $text: { $search: String(q) } } : filter;
     const clients = await Client.find(find).sort({ updatedAt: -1 }).lean();

@@ -1,0 +1,9 @@
+{
+  "name": "Rocky 3-Level Ads Execution RAG v1",
+  "version": "2026-07-24",
+  "documents": 23,
+  "rag_records": 23,
+  "client_data_included": false,
+  "scope": "Meta + Google campaign/ad-set-or-ad-group/ad execution foundation from public official sources.",
+  "note": "Live API validation remains mandatory for IDs, eligibility, enums, forecasts and account-specific capabilities."
+}
